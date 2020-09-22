@@ -1,0 +1,278 @@
+import cv2 as cv
+import numpy as np
+import math
+import copy
+from matplotlib import pyplot as plt
+from skimage import morphology
+
+lables = []
+lables = ['rock', 'paper', 'scissors']
+
+# otsu
+def OTSU(img_gray):
+    max_g = 0
+    suitable_th = 0
+    th_begin = 0
+    th_end = 256
+    for threshold in range(th_begin, th_end):
+        bin_img = img_gray > threshold
+        bin_img_inv = img_gray <= threshold
+        fore_pix = np.sum(bin_img)
+        back_pix = np.sum(bin_img_inv)
+        if 0 == fore_pix:
+            break
+        if 0 == back_pix:
+            continue
+
+        w0 = float(fore_pix) / img_gray.size
+        u0 = float(np.sum(img_gray * bin_img)) / fore_pix
+        w1 = float(back_pix) / img_gray.size
+        u1 = float(np.sum(img_gray * bin_img_inv)) / back_pix
+        # intra-class variance
+        g = w0 * w1 * (u0 - u1) * (u0 - u1)
+        if g > max_g:
+            max_g = g
+            suitable_th = threshold
+
+    return suitable_th
+
+src = cv.imread('C:\\Users\\19652\Desktop\\255.jpg')
+# 255ke  266ke  277ke
+
+# 双边滤波
+frame = cv.bilateralFilter(src, 5, 50, 100)
+
+# 将移除背景后的图像转换为灰度图
+gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+
+# 加高斯模糊
+blur = cv.GaussianBlur(gray, (43, 43), 0)
+
+# 二值化（otsu） & 画出二值图像
+ret, thresh = cv.threshold(blur, OTSU(blur), 255, cv.THRESH_BINARY_INV)
+# cv.namedWindow("dst", 0)
+# cv.imshow('dst', thresh)
+
+# 找轮廓 & 画出轮廓
+contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+res = cv.drawContours(frame, contours, -1, (0, 0, 255), 5)
+
+# 轮廓内填充 & 画出填充后二值图像
+thresh = cv.drawContours(thresh, contours, -1, (255,255,255), cv.FILLED)
+# cv.namedWindow("thresh", 0)
+# cv.imshow('thresh', thresh)
+
+# 画质心和矩形框 & 输出质心 & 画出质心
+cxcy = []
+hull = []
+for i in range(len(contours)):  # 画质心和矩形框
+    cnt = contours[i]
+    M = cv.moments(cnt)
+    cxcy.append((int(M['m10'] / M['m00']), int(M['m01'] / M['m00'])))
+
+    # 输出质心
+    print(cxcy[i])
+
+    # 画出质心
+    circle = cv.circle(frame, cxcy[i], 7, (0, 0, 255), -1)
+
+    # 取出凸包
+    hull.append(cv.convexHull(cnt, False))
+
+    # 画出凸包
+    cv.polylines(frame, hull, True, (255, 255, 0), 3)
+
+    # 画出矩形框
+    x, y, w, h = cv.boundingRect(cnt)
+    rectangle = cv.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    # cv.namedWindow("circle", 0)
+    # cv.imshow('circle', circle)
+
+# print('hull[0]' + str(hull[0][0][0][0])) = 横坐标
+# print('hull[1]' + str(hull[1]))
+# print('hull[2]' + str(hull[2]))
+
+# ####################################按 步 长 取 出 凸 点####################################### #
+
+# 按步长取出凸点写入list
+hull_point0 = []
+hull_point1 = []
+hull_point2 = []
+hull_point0.append(hull[0][0: len(hull[0]): 5])
+hull_point1.append(hull[1][0: len(hull[1]): 5])
+hull_point2.append(hull[2][0: len(hull[2]): 5])
+# print(hull_point0[0][1][0])  #[三个边缘][边缘的点][去括号][x,y]
+
+# ####################################寻 找 指 尖####################################### #
+
+# hull_point0--玩家1
+cnt0 = contours[0]
+figure0 = []
+sum0 = 0
+
+# print(len(cnt0))
+for j in range(len(cnt0)):
+    dist0 = math.sqrt((cnt0[j][0][0] - cxcy[0][0])**2 + (cnt0[j][0][1] - cxcy[0][1])**2) #计算两点间距离
+    # cnt2[j][0][0]=边缘点的横坐标
+    sum0 += dist0
+mean0 = sum0 // len(cnt0)
+print(mean0)
+
+# 寻找指尖
+for j in range(len(hull_point0[0])):
+    # print(hull_point0[0][j][0])
+    dist0 = math.sqrt((hull_point0[0][j][0][0] - cxcy[0][0]) ** 2 + (hull_point0[0][j][0][1] - cxcy[0][1]) ** 2)  # 计算两点间距离
+    if mean0 <= 140:  # 判别石头
+        break
+
+    elif dist0 >= 1.4 * mean0:
+        print('指尖点为：' + str(hull_point0[0][j][0]))
+        figure0.append(hull_point0[0][j][0])
+        circle2 = cv.circle(frame, (hull_point0[0][j][0][0],hull_point0[0][j][0][1]), 7, (255, 255, 0), -1)
+        cv.namedWindow("circle2", 0)
+        cv.imshow('circle2', circle2)
+
+# hull_point1--玩家2
+cnt1 = contours[1]
+figure1 = []
+sum1 = 0
+
+for j in range(len(cnt1)):
+    dist1 = math.sqrt((cnt1[j][0][0] - cxcy[1][0])**2 + (cnt1[j][0][1] - cxcy[1][1])**2) #计算两点间距离
+    # cnt1[j][0][0]=边缘点的横坐标
+    sum1 += dist1
+mean1 = sum1 // len(cnt1)
+print(mean1)
+
+# 寻找指尖
+for j in range(len(hull_point1[0])):
+    dist1 = math.sqrt((hull_point1[0][j][0][0] - cxcy[1][0]) ** 2 + (hull_point1[0][j][0][1] - cxcy[1][1]) ** 2) # 计算两点间距离
+    if mean1 <= 140:  # 判别石头
+        break
+
+    elif dist1 >= 1.4 * mean1:
+        print('指尖点为：' + str(hull_point1[0][j][0]))
+        figure1.append(hull_point1[0][j][0])
+        circle2 = cv.circle(frame, (hull_point1[0][j][0][0],hull_point1[0][j][0][1]), 7, (255, 255, 0), -1)
+        cv.namedWindow("circle2", 0)
+        cv.imshow('circle2', circle2)
+
+# hull_point2--玩家3
+cnt2 = contours[2]
+figure2 = []
+sum2 = 0
+
+for j in range(len(cnt2)):
+    dist2 = math.sqrt((cnt2[j][0][0] - cxcy[2][0])**2 + (cnt2[j][0][1] - cxcy[2][1])**2) #计算两点间距离
+    # cnt2[j][0][0]=边缘点的横坐标
+    sum2 += dist2
+mean2 = sum2 // len(cnt2)
+print(mean2)
+
+# 寻找指尖
+for j in range(len(hull_point2[0])):
+    dist2 = math.sqrt((hull_point2[0][j][0][0] - cxcy[2][0]) ** 2 + (hull_point2[0][j][0][1] - cxcy[2][1]) ** 2)  # 计算两点间距离
+    if mean2 <= 140:  # 判别石头
+        break
+
+    elif dist2 >= 1.4 * mean2:
+        print('指尖点为：' + str(hull_point2[0][j][0]))
+        figure2.append(hull_point2[0][j][0])
+        circle2 = cv.circle(frame, (hull_point2[0][j][0][0],hull_point2[0][j][0][1]), 7, (255, 255, 0), -1)
+        cv.namedWindow("circle2", 0)
+        cv.imshow('circle2', circle2)
+
+# ####################################打 印 结 果####################################### #
+
+answers = []
+
+if len(figure0) >= 5:
+    answers.append(lables[1])
+    print('玩家1出' + answers[0])
+elif (len(figure0)<5)&(len(figure0)>=2):
+    answers.append(lables[2])
+    print('玩家1出' + answers[0])
+else:
+    answers.append(lables[0])
+    print('玩家1出' + answers[0])
+
+if len(figure1) >= 5:
+    answers.append(lables[1])
+    print('玩家2出' + answers[1])
+elif (len(figure1) < 5) & (len(figure1) >= 2):
+    answers.append(lables[2])
+    print('玩家2出' + answers[1])
+else:
+    answers.append(lables[0])
+    print('玩家2出' + answers[1])
+
+if len(figure2) >= 5:
+    answers[2] = lables[1]
+    print('玩家3出' + answers[2])
+elif (len(figure2) < 5) & (len(figure2) >= 2):
+    answers.append(lables[2])
+    print('玩家3出' + answers[2])
+else:
+    answers.append(lables[0])
+    print('玩家3出' + answers[2])
+
+# ####################################判 别####################################### #
+
+if (answers[0] == answers[1]) & (answers[0] == answers[2]) & (answers[2] == answers[1]):
+    print("平局")
+elif (answers[0] != answers[1]) & (answers[0] != answers[2]) & (answers[2] != answers[1]):
+    print("平局")
+
+# 两个石头，一个布
+elif (answers[0] == lables[0]) & (answers[1] == lables[0]) & (answers[2] == lables[1]):
+    print(lables[1] + "获胜")
+elif (answers[0] == lables[0]) & (answers[2] == lables[0]) & (answers[1] == lables[1]):
+    print(lables[1] + "获胜")
+elif (answers[1] == lables[0]) & (answers[2] == lables[0]) & (answers[0] == lables[1]):
+    print(lables[1] + "获胜")
+
+# 两个布，一个剪子
+elif (answers[0] == lables[1]) & (answers[1] == lables[1]) & (answers[2] == lables[2]):
+    print(lables[2] + "获胜")
+elif (answers[0] == lables[1]) & (answers[2] == lables[1]) & (answers[1] == lables[2]):
+    print(lables[2] + "获胜")
+elif (answers[1] == lables[1]) & (answers[2] == lables[1]) & (answers[0] == lables[2]):
+    print(lables[2] + "获胜")
+
+# 两个剪子，一个石头
+elif (answers[0] == lables[2]) & (answers[1] == lables[2]) & (answers[2] == lables[0]):
+    print(lables[0] + "获胜")
+elif (answers[0] == lables[2]) & (answers[2] == lables[2]) & (answers[1] == lables[0]):
+    print(lables[0] + "获胜")
+elif (answers[1] == lables[2]) & (answers[2] == lables[2]) & (answers[0] == lables[0]):
+    print(lables[0] + "获胜")
+
+# 两个布，一个石头
+elif (answers[0] == lables[1]) & (answers[1] == lables[1]) & (answers[2] == lables[0]):
+    print(lables[1] + "获胜")
+elif (answers[0] == lables[1]) & (answers[2] == lables[1]) & (answers[1] == lables[0]):
+    print(lables[1] + "获胜")
+elif (answers[1] == lables[1]) & (answers[2] == lables[1]) & (answers[0] == lables[0]):
+    print(lables[1] + "获胜")
+
+# 两个剪子，一个布
+elif (answers[0] == lables[2]) & (answers[1] == lables[2]) & (answers[2] == lables[1]):
+    print(lables[2] + "获胜")
+elif (answers[0] == lables[2]) & (answers[2] == lables[2]) & (answers[1] == lables[1]):
+    print(lables[2] + "获胜")
+elif (answers[1] == lables[2]) & (answers[2] == lables[2]) & (answers[0] == lables[1]):
+    print(lables[2] + "获胜")
+
+# 两个石头，一个剪子
+elif (answers[0] == lables[0]) & (answers[1] == lables[0]) & (answers[2] == lables[2]):
+    print(lables[0] + "获胜")
+elif (answers[0] == lables[0]) & (answers[2] == lables[0]) & (answers[1] == lables[2]):
+    print(lables[0] + "获胜")
+elif (answers[1] == lables[0]) & (answers[2] == lables[0]) & (answers[0] == lables[2]):
+    print(lables[0] + "获胜")
+
+############################################################################################################
+
+cv.waitKey(0)
+cv.destroyAllWindows()
